@@ -1,0 +1,40 @@
+[tool.poetry]
+name = "integration"
+version = "0.1.0"
+description = ""
+authors = ["Your Name <you@example.com>"]
+readme = "README.md"
+
+
+[tool.poetry.dependencies]
+python = "^3.9"
+aiohttp = "3.9.5"
+pydantic = "2.8.2"
+pyyaml = "6.0.1"
+python-dotenv = "1.0.1"
+
+
+[tool.poetry.group.dev.dependencies]
+black = "24.4.2"
+isort = "5.13.0"
+mypy = "1.11.1"
+pytest = "8.2.2"
+pytest-asyncio = "0.23.7"
+pytest-mock = "3.14.0"
+pytest-mypy = "0.10.3"
+types-PyYAML = "6.0.12.20240724"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+addopts = "--verbose --mypy"
+
+
+[tool.mypy]
+strict = true
+ignore_missing_imports = true
+explicit_package_bases = true
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
