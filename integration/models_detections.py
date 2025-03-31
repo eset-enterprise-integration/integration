@@ -45,6 +45,7 @@ class TriggeringEvent(BaseModel):
 
 
 class Detection(BaseModel):
+    providerName: str = "ESET"
     device: t.Optional[Device] = Field(default=None, exclude=True)
     process: t.Optional[Process] = Field(default=None, exclude=True)
     context: t.Optional[Context] = Field(default=None, exclude=True)
