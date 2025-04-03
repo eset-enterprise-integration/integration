@@ -64,7 +64,7 @@ class EnvVariables:
         load_dotenv()
         self.__username: t.Optional[str] = os.getenv("USERNAME_INTEGRATION")
         self.__password: t.Optional[str] = os.getenv("PASSWORD_INTEGRATION")
-        self.interval: int = int(os.getenv("INTERVAL", 5)) if int(os.getenv("INTERVAL", 5)) >= 1 else 1
+        self.interval: int = int(os.getenv("INTERVAL", 5)) if int(os.getenv("INTERVAL", 5)) >= 3 else 3
 
         self.ep_instance: str = os.getenv("EP_INSTANCE", "").lower()
         self.ei_instance: str = os.getenv("EI_INSTANCE", "").lower()
