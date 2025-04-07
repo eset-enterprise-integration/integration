@@ -18,7 +18,7 @@ class ServiceClient:
         self.token_provider = self._get_token_provider()
         self.transformer_detections = self._get_transformer_detections()
         self._session: t.Optional[ClientSession] = None
-        self._lock = asyncio.Lock()
+        self._lock = None
 
     def _get_config(self) -> Config:
         return Config("", "")
@@ -44,6 +44,7 @@ class ServiceClient:
 
     async def run(self) -> None:
         self._session = ClientSession(raise_for_status=True)
+        self._lock = asyncio.Lock()
         start_time = time.time()
         try:
             await asyncio.gather(
