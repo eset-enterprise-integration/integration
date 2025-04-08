@@ -18,7 +18,7 @@ class ServiceClient:
         self.token_provider = self._get_token_provider()
         self.transformer_detections = self._get_transformer_detections()
         self._session: t.Optional[ClientSession] = None
-        self._lock = None
+        self._lock: t.Optional[asyncio.Lock] = None
 
     def _get_config(self) -> Config:
         return Config("", "")
