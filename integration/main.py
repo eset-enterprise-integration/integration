@@ -149,6 +149,7 @@ class ServiceClient:
                         "Authorization": f"Bearer {self.token_provider.token.access_token}",
                         "Content-Type": "application/json",
                         "3rd-integration": self.config.integration_name,
+                        "Version": self.config.version,
                     },
                     last_detection_time_handler.last_detection_time,
                     next_page_token,
