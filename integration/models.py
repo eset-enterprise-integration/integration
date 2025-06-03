@@ -54,6 +54,7 @@ class Config:
             "EI": {"endpoint": "/v2/detection-groups"},
             "EP": {"endpoint": "/v1/detections"},
             "ECOS": {"endpoint": "/v2/detections"},
+            "INCIDENTS": {"endpoint": "/v2/incidents"},
         }
         self.integration_name: str = integration_name
         self.version: str = version
@@ -72,7 +73,7 @@ class EnvVariables:
 
         region = os.getenv("INSTANCE_REGION", "eu")
         self.oauth_url: str = f"https://{region}.business-account.iam.eset.systems"
-        self.detections_url: str = f"https://{region}.incident-management.eset.systems"
+        self.data_url: str = f"https://{region}.incident-management.eset.systems"
 
     @property
     def username(self) -> t.Optional[str]:

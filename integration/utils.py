@@ -15,7 +15,7 @@ from integration.exceptions import (
     TokenRefreshException,
 )
 from integration.models import Config, EnvVariables, TokenStorage
-from integration.models_detections import Detection, Detections
+from integration.models_data import Detection, Detections, Incident, Incidents
 
 
 class RequestSender:
@@ -74,13 +74,17 @@ class RequestSender:
             data=urllib.parse.quote(f"grant_type={grant_type}", safe="=&/"),
             timeout=self.config.requests_timeout,
         ) as response:
-            return await response.json()
+            response_json = await response.json()
+            if response.status >= 400:
+                logging.info(f"Response status: {response.status} Response text: {response_json}")
+                response.raise_for_status()
+            return response_json
 
     async def send_request_get(
         self,
         session: ClientSession,
         headers: t.Optional[dict[str, t.Any]],
-        last_detection_time: str,
+        last_data_time: str,
         next_page_token: t.Optional[str],
         page_size: int,
         data_endpoint: str,
@@ -88,20 +92,29 @@ class RequestSender:
         logging.info("Sending service request")
 
         async with session.get(
-            self.env_vars.detections_url + data_endpoint,
+            self.env_vars.data_url + data_endpoint,
             headers=headers,
-            params=self._prepare_get_request_params(last_detection_time, next_page_token, page_size),
+            params=self._prepare_get_request_params(last_data_time, next_page_token, page_size, data_endpoint),
         ) as response:
-            return await response.json()
+            response_json = await response.json()
+            if response.status >= 400:
+                logging.info(
+                    f"Response status: {response.status} Endpoint: {data_endpoint}"
+                )
+                response.raise_for_status()
+            return response_json
 
     def _prepare_get_request_params(
-        self, last_detection_time: str, next_page_token: t.Optional[str], page_size: int = 100
+        self, last_data_time: str, next_page_token: t.Optional[str], page_size: int = 100, data_endpoint: str = ""
     ) -> dict[str, t.Any]:
-        params = {"pageSize": page_size}
+        params: dict[str, t.Any]= {"pageSize": page_size}
         if next_page_token not in ["", None]:
-            params["pageToken"] = next_page_token  # type: ignore[assignment]
-        if last_detection_time:
-            params["startTime"] = last_detection_time  # type: ignore[assignment]
+            params["pageToken"] = next_page_token
+        if last_data_time:
+            if "incidents" in data_endpoint:
+                params["filter"] = f'incident.create_time >= timestamp("{last_data_time}")'
+            else:
+                params["startTime"] = last_data_time
 
         return params
 
@@ -160,74 +173,76 @@ class TokenProvider:
         pass
 
 
-class TransformerDetections:
+class TransformerData:
     def __init__(self, env_vars: EnvVariables) -> None:
         self.env_vars = env_vars
 
-    async def send_integration_detections(
-        self, detections: t.Optional[dict[str, t.Any]], last_detection: t.Optional[str]
+    async def send_integration_data(
+        self, data: t.Optional[dict[str, t.Any]], last_data_time: t.Optional[str], endp: str
     ) -> t.Optional[tuple[t.Optional[str], bool]]:
-        validated_detections = self._validate_detections_data(detections)
-        if not validated_detections:
-            return last_detection, False
-        return await self._send_data_to_destination(validated_detections, last_detection)
+        data_model: type[t.Union[Detections, Incidents]] = Incidents if "incidents" in endp else Detections
+        validated_data = self._validate_data(data, data_model)
+
+        if not validated_data:
+            return last_data_time, False
+        return await self._send_data_to_destination(validated_data, last_data_time, endp)
 
     async def _send_data_to_destination(
-        self, validated_data: t.List[dict[str, t.Any]], last_detection: t.Optional[str]
+        self, validated_data: t.List[dict[str, t.Any]], last_data_time: t.Optional[str], endp: str = ""
     ) -> t.Optional[tuple[t.Optional[str], bool]]:
         pass
 
-    def _validate_detections_data(
-        self, response_data: t.Optional[dict[str, t.Any]]
-    ) -> t.Optional[list[dict[str, t.Any]]]:
-        if not response_data:
-            logging.info("No new detections")
-            return None
-
-        response_data["detections"] = (
-            response_data.pop("detectionGroups") if "detectionGroups" in response_data else response_data["detections"]
-        )
-        try:
-            validated_data = Detections.model_validate(response_data)
-            self._update_time_generated(validated_data.detections)
-            return validated_data.model_dump().get("detections")
-
-        except ValidationError as e:
-            logging.error(e)
-            validated_detections = []
-
-            for detection in response_data.get("detections"):  # type: ignore
-                try:
-                    validated_detections.append(Detection.model_validate(detection))
-                except ValidationError as e:
-                    logging.error(e)
-
-            self._update_time_generated(validated_detections)
-            return [d.model_dump() for d in validated_detections]
-
-    def _update_time_generated(self, validated_data: t.List[Detection]) -> None:
-        utc_now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+    def _update_time_generated(self, validated_data: t.List[Detection | Incident]) -> None:
+        utc_now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         for data in validated_data:
             data.TimeGenerated = utc_now
 
+    def _validate_data(
+        self, response_data: t.Optional[dict[str, t.Any]], data_model: type[Detections | Incidents]
+    ) -> t.Optional[list[dict[str, t.Any]]]:
+        if not response_data:
+            logging.info("No new integration data")
+            return None
 
-class LastDetectionTimeHandler:
+        if "detectionGroups" in response_data:
+            response_data["detections"] = response_data.pop("detectionGroups")
+
+        data_key = "incidents" if data_model == Incidents else "detections"
+
+        try:
+            validated_data = data_model.model_validate(response_data)
+            self._update_time_generated(getattr(validated_data, data_key, []))
+            return validated_data.model_dump().get(data_key)
+
+        except ValidationError as e:
+            logging.error(e)
+            validated_data_list = []
+            single_data_model: type[t.Union[Detection, Incident]] = Detection if data_model == Detections else Incident
+
+            for data in response_data.get(data_key, []):
+                try:
+                    validated_data_list.append(single_data_model.model_validate(data))
+                except ValidationError as e:
+                    logging.error(e)
+
+            self._update_time_generated(validated_data_list)
+            return [d.model_dump() for d in validated_data_list]
+
+
+class LastDataTimeHandler:
     def __init__(self, data_source: str, interval: int) -> None:
-        self.last_detection_time = self.get_last_occur_time(data_source, interval)
+        self.last_data_time = self.get_last_data_time(data_source, interval)
 
-    def prepare_date_plus_timedelta(self, cur_last_detection_time: str) -> str:
-        return (
-            datetime.strptime(
-                self.transform_date_with_miliseconds_to_second(cur_last_detection_time), "%Y-%m-%dT%H:%M:%SZ"
-            )
-            + timedelta(seconds=1)
-        ).isoformat() + "Z"
+    def prepare_date_plus_timedelta(self, cur_last_data_time: str) -> str:
+        return (self.map_time_to_seconds_precision(cur_last_data_time) + timedelta(seconds=1)).isoformat() + "Z"
 
-    def transform_date_with_miliseconds_to_second(self, cur_last_detection_time: str) -> str:
-        return cur_last_detection_time if len(cur_last_detection_time) == 20 else cur_last_detection_time[:-5] + "Z"
+    def map_time_to_seconds_precision(self, date: str) -> datetime:
+        return datetime.strptime(date, "%Y-%m-%dT%H:%M:%S.%fZ" if "." in date else "%Y-%m-%dT%H:%M:%SZ").replace(
+            microsecond=0
+        )
 
-    def get_last_occur_time(self, data_source: t.Optional[str] = None, interval: int = 5) -> t.Optional[str]:
+    def get_last_data_time(self, data_source: t.Optional[str] = None, interval: int = 5) -> t.Optional[str]:
         pass
 
-    async def update_last_detection_time(self, cur_ld_time: t.Optional[str], data_source: str) -> None:
+    async def update_last_data_time(self, cur_ld_time: t.Optional[str], data_source: str) -> None:
         pass
