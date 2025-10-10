@@ -62,8 +62,7 @@ class Detection(BaseModel):
     TimeGenerated: str = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     severityLevel: str
     typeName: str
-    customUuid: str = Field(alias="uuid", exclude=True)
-    detectionOccurenceUuids: t.Optional[list[str]] = Field(default=None, exclude=True)
+    detectionUuid: str = Field(alias="uuid")
     groupSize: int = 1
     severityScore: t.Optional[str] = None
     userName: t.Optional[str] = ""
@@ -74,10 +73,6 @@ class Detection(BaseModel):
     cloudOfficeTenantUuid: t.Optional[str] = None
     scanUuid: t.Optional[str] = None
     triggeringEvent: t.Optional[TriggeringEvent] = None
-
-    @computed_field(return_type=t.Union[str, list[str]])
-    def detectionUuid(self) -> t.Union[str, list[str]]:
-        return self.detectionOccurenceUuids if self.detectionOccurenceUuids else self.customUuid
 
     @computed_field(return_type=t.Optional[str])
     def deviceDisplayName(self) -> t.Optional[str]:
@@ -118,9 +113,9 @@ class Detection(BaseModel):
 
 
 class Detections(BaseModel):
-    detections: list[Detection]
+    createdDetections: list[Detection]
     nextPageToken: str = Field(exclude=True)
-    totalSize: t.Optional[int] = Field(default=None, exclude=True)
+    nextDeltaToken: str = Field(exclude=True)
 
 
 # Incidents
