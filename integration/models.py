@@ -2,6 +2,7 @@ import os
 import typing as t
 from dataclasses import dataclass, field
 from datetime import datetime
+from enum import Enum
 
 from dotenv import load_dotenv
 
@@ -44,18 +45,18 @@ class TokenStorage:
         }
 
 
+class DataSource(Enum):
+    EI_ECOS = "/v2/detections:listDelta"
+    EP = "/v1/detections:listDelta"
+    INCIDENTS = "/v2/incidents"
+
+
 class Config:
     def __init__(self, integration_name: str, version: str) -> None:
         self.max_retries: int = 3
         self.retry_delay: float = 60
         self.requests_timeout = 3600
         self.buffer = 5
-        self.data_sources: dict[str, t.Any] = {
-            "EI": {"endpoint": "/v2/detection-groups"},
-            "EP": {"endpoint": "/v1/detections"},
-            "ECOS": {"endpoint": "/v2/detections"},
-            "INCIDENTS": {"endpoint": "/v2/incidents"},
-        }
         self.integration_name: str = integration_name
         self.version: str = version
 
@@ -72,6 +73,7 @@ class EnvVariables:
         self.ecos_instance: str = os.getenv("ECOS_INSTANCE", "").lower()
 
         region = os.getenv("INSTANCE_REGION", "eu")
+
         self.oauth_url: str = f"https://{region}.business-account.iam.eset.systems"
         self.data_url: str = f"https://{region}.incident-management.eset.systems"
 

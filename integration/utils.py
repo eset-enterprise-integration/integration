@@ -14,7 +14,7 @@ from integration.exceptions import (
     MissingCredentialsException,
     TokenRefreshException,
 )
-from integration.models import Config, EnvVariables, TokenStorage
+from integration.models import Config, DataSource, EnvVariables, TokenStorage
 from integration.models_data import Detection, Detections, Incident, Incidents
 
 
@@ -33,12 +33,12 @@ class RequestSender:
             t.Callable[
                 [ClientSession, t.Optional[dict[str, t.Any]], t.Optional[str]],
                 t.Coroutine[t.Any, t.Any, t.Union[dict[str, t.Union[str, int]], t.Any]],
-            ],
+            ], t.Any
         ],
         session: ClientSession,
         headers: t.Optional[dict[str, t.Any]] = None,
         *data: t.Any,
-    ) -> t.Optional[dict[str, t.Union[str, int]]]:
+    ) ->  t.Union[t.Optional[dict[str, t.Union[str, int]]], t.Any]:
         retries = 0
 
         while retries < self.config.max_retries:
@@ -98,23 +98,23 @@ class RequestSender:
         ) as response:
             response_json = await response.json()
             if response.status >= 400:
-                logging.info(
-                    f"Response status: {response.status} Endpoint: {data_endpoint}"
-                )
+                logging.info(f"Response status: {response.status} Endpoint: {data_endpoint}")
                 response.raise_for_status()
             return response_json
 
     def _prepare_get_request_params(
         self, last_data_time: str, next_page_token: t.Optional[str], page_size: int = 100, data_endpoint: str = ""
     ) -> dict[str, t.Any]:
-        params: dict[str, t.Any]= {"pageSize": page_size}
+        params: dict[str, t.Any] = {"pageSize": page_size}
         if next_page_token not in ["", None]:
             params["pageToken"] = next_page_token
         if last_data_time:
             if "incidents" in data_endpoint:
-                params["filter"] = f'incident.create_time >= timestamp("{last_data_time}")'
+                params["filter"] = f"incident.create_time >= timestamp('{last_data_time}')"
             else:
-                params["startTime"] = last_data_time
+                params["deltaToken"] = last_data_time
+        if next_page_token in ["", None] and last_data_time in ["", None]:
+            params["deltaToken"] = "latest"
 
         return params
 
@@ -170,7 +170,7 @@ class TokenProvider:
         )
 
     def manage_token_refresh_issue(self) -> None:
-        pass
+        self.token.access_token = self.token.refresh_token = self.token.expiration_time = None
 
 
 class TransformerData:
@@ -178,17 +178,27 @@ class TransformerData:
         self.env_vars = env_vars
 
     async def send_integration_data(
-        self, data: t.Optional[dict[str, t.Any]], last_data_time: t.Optional[str], endp: str
+        self,
+        data: t.Optional[dict[str, t.Any]],
+        last_data_time: t.Optional[str],
+        endp: str,
+        lock: t.Optional[asyncio.Lock] = None,
+        session: t.Optional[ClientSession] = None,
     ) -> t.Optional[tuple[t.Optional[str], bool]]:
         data_model: type[t.Union[Detections, Incidents]] = Incidents if "incidents" in endp else Detections
         validated_data = self._validate_data(data, data_model)
 
         if not validated_data:
             return last_data_time, False
-        return await self._send_data_to_destination(validated_data, last_data_time, endp)
+        return await self._send_data_to_destination(validated_data, last_data_time, endp, lock, session)
 
     async def _send_data_to_destination(
-        self, validated_data: t.List[dict[str, t.Any]], last_data_time: t.Optional[str], endp: str = ""
+        self,
+        validated_data: t.List[dict[str, t.Any]],
+        last_data_time: t.Optional[str],
+        endp: str = "",
+        lock: t.Optional[asyncio.Lock] = None,
+        session: t.Optional[ClientSession] = None,
     ) -> t.Optional[tuple[t.Optional[str], bool]]:
         pass
 
@@ -204,10 +214,7 @@ class TransformerData:
             logging.info("No new integration data")
             return None
 
-        if "detectionGroups" in response_data:
-            response_data["detections"] = response_data.pop("detectionGroups")
-
-        data_key = "incidents" if data_model == Incidents else "detections"
+        data_key = "incidents" if data_model == Incidents else "createdDetections"
 
         try:
             validated_data = data_model.model_validate(response_data)
@@ -230,8 +237,8 @@ class TransformerData:
 
 
 class LastDataTimeHandler:
-    def __init__(self, data_source: str, interval: int) -> None:
-        self.last_data_time = self.get_last_data_time(data_source, interval)
+    def __init__(self, data_source: DataSource, interval: int) -> None:
+        self.last_data_time, self.next_page_token = self.get_last_data_time(data_source, interval)  # type: ignore
 
     def prepare_date_plus_timedelta(self, cur_last_data_time: str) -> str:
         return (self.map_time_to_seconds_precision(cur_last_data_time) + timedelta(seconds=1)).isoformat() + "Z"
@@ -241,8 +248,10 @@ class LastDataTimeHandler:
             microsecond=0
         )
 
-    def get_last_data_time(self, data_source: t.Optional[str] = None, interval: int = 5) -> t.Optional[str]:
+    def get_last_data_time(self, data_source: DataSource, interval: int = 5) -> t.Optional[tuple[str, str]]:
         pass
 
-    async def update_last_data_time(self, cur_ld_time: t.Optional[str], data_source: str) -> None:
+    async def update_last_data_time(
+        self, cur_ld_time: t.Optional[str], next_page_token: t.Optional[str], data_source: DataSource
+    ) -> None:
         pass
