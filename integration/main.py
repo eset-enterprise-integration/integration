@@ -187,7 +187,7 @@ class ServiceClient:
                 )
                 is_obtained = True if data and any(data.get(v) for v in ("createdDetections", "incidents")) else False
                 logging.info(
-                    f"Service call {data_endpoint} response data is {'obtained' if is_obtained else f'empty: {data}'}"
+                    f"Service call {data_endpoint} response data is {'obtained' if is_obtained else 'empty'}"
                 )
                 return data
 
@@ -196,3 +196,4 @@ class ServiceClient:
             logging.error(f"Error in running service call: {e}")
 
         return None
+
