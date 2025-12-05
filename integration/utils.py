@@ -170,7 +170,7 @@ class TokenProvider:
         )
 
     def manage_token_refresh_issue(self) -> None:
-        pass
+        self.token.access_token = self.token.refresh_token = self.token.expiration_time = None
 
 
 class TransformerData:
