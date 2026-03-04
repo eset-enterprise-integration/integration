@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "integration"
-version = "0.3.0"
+version = "0.3.1"
 description = ""
 authors = ["ESET Enterprise Integration <eset-enterprise-integration@eset.com>"]
 readme = "README.md"
