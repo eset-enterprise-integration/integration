@@ -33,12 +33,13 @@ class RequestSender:
             t.Callable[
                 [ClientSession, t.Optional[dict[str, t.Any]], t.Optional[str]],
                 t.Coroutine[t.Any, t.Any, t.Union[dict[str, t.Union[str, int]], t.Any]],
-            ], t.Any
+            ],
+            t.Any,
         ],
         session: ClientSession,
         headers: t.Optional[dict[str, t.Any]] = None,
         *data: t.Any,
-    ) ->  t.Union[t.Optional[dict[str, t.Union[str, int]]], t.Any]:
+    ) -> t.Union[t.Optional[dict[str, t.Union[str, int]]], t.Any]:
         retries = 0
 
         while retries < self.config.max_retries:
@@ -48,6 +49,12 @@ class RequestSender:
             except ClientResponseError as e:
                 if e.headers:
                     logging.info(f"Request-ID: {e.headers.get('Request-ID')}")
+
+                if e.status == 202:
+                    if headers and e.headers and e.headers.get("response-id"):
+                        headers["response-id"] = e.headers.get("response-id", "")
+                        logging.info(f"Response-ID {headers['response-id']}")
+                    logging.info("Request accepted but not processed. Retrying...")
 
                 if e.status in [400, 401, 403]:
                     raise AuthenticationException(status=e.status, message=e.message)
@@ -97,6 +104,14 @@ class RequestSender:
             params=self._prepare_get_request_params(last_data_time, next_page_token, page_size, data_endpoint),
         ) as response:
             response_json = await response.json()
+            if response.status == 202:
+                raise ClientResponseError(
+                    request_info=response.request_info,
+                    history=response.history,
+                    status=response.status,
+                    message="Accepted but not processed",
+                    headers=response.headers,
+                )
             if response.status >= 400:
                 logging.info(f"Response status: {response.status} Endpoint: {data_endpoint}")
                 response.raise_for_status()
