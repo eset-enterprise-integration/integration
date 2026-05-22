@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import typing as t
-import urllib.parse
 from datetime import datetime, timedelta, timezone
 
 from aiohttp import ClientSession
@@ -71,14 +70,14 @@ class RequestSender:
         return None
 
     async def send_request_post(
-        self, session: ClientSession, headers: t.Optional[dict[str, t.Any]], grant_type: t.Optional[str]
+        self, session: ClientSession, headers: t.Optional[dict[str, t.Any]], grant_type: t.Optional[dict[str, t.Any]]
     ) -> t.Union[dict[str, t.Union[str, int]], t.Any]:
         logging.info("Sending token request")
 
         async with session.post(
             url=f"{self.env_vars.oauth_url}/oauth/token",
             headers=headers,
-            data=urllib.parse.quote(f"grant_type={grant_type}", safe="=&/"),
+            data=grant_type,
             timeout=self.config.requests_timeout,
         ) as response:
             response_json = await response.json()
@@ -151,9 +150,9 @@ class TokenProvider:
                 raise MissingCredentialsException()
 
             grant_type = (
-                f"refresh_token&refresh_token={self.token.refresh_token}"
+                {"grant_type": "refresh_token", "refresh_token": self.token.refresh_token}
                 if self.token.access_token
-                else f"password&username={self.env_vars.username}&password={self.env_vars.password}"
+                else {"grant_type": "password", "username": self.env_vars.username, "password": self.env_vars.password}
             )
 
             try:
