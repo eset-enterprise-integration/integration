@@ -199,7 +199,7 @@ class TransformerData:
         lock: t.Optional[asyncio.Lock] = None,
         session: t.Optional[ClientSession] = None,
     ) -> t.Optional[tuple[t.Optional[str], bool]]:
-        data_model: type[t.Union[Detections, Incidents]] = Incidents if "incidents" in endp else Detections
+        data_model: t.Type[t.Union[Detections, Incidents]] = Incidents if "incidents" in endp else Detections
         validated_data = self._validate_data(data, data_model)
 
         if not validated_data:
@@ -216,13 +216,13 @@ class TransformerData:
     ) -> t.Optional[tuple[t.Optional[str], bool]]:
         pass
 
-    def _update_time_generated(self, validated_data: t.List[Detection | Incident]) -> None:
+    def _update_time_generated(self, validated_data: t.List[t.Union[Detection, Incident]]) -> None:
         utc_now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         for data in validated_data:
             data.TimeGenerated = utc_now
 
     def _validate_data(
-        self, response_data: t.Optional[dict[str, t.Any]], data_model: type[Detections | Incidents]
+        self, response_data: t.Optional[dict[str, t.Any]], data_model: t.Type[t.Union[Detections, Incidents]]
     ) -> t.Optional[list[dict[str, t.Any]]]:
         if not response_data:
             logging.info("No new integration data")

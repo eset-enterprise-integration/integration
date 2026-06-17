@@ -196,5 +196,3 @@ class ServiceClient:
             logging.error(f"Error in running service call: {e}")
 
         return None
-
-
